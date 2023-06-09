@@ -2915,15 +2915,22 @@ class TestSkglmL1Cox:
         X, T, E = tied_data.drop([0, 1], axis=1), tied_data[0], tied_data[1]
         entries, W = None, pd.Series(np.ones_like(T))
 
-        newton_raphson = cph._newton_raphson_for_efron_model
-        skglm_prox_newton = cph._prox_newton_for_efron_model
+        result_prox_newton = cph._prox_newton_for_efron_model(X, T, E, fit_options={}, show_progress=False)
+        result_newton_raphson = cph._newton_raphson_for_efron_model(X, T, E, W, entries, show_progress=False, precision=1e-12)
 
+        # check solution
         np.testing.assert_allclose(
-            skglm_prox_newton(X, T, E, fit_options={})[0],
-            newton_raphson(X, T, E, W, entries, precision=1e-12)[0],
+            result_prox_newton[0],
+            result_newton_raphson[0],
             atol=1e-4
         )
 
+        # check log likelihood
+        np.testing.assert_allclose(
+            result_prox_newton[1],
+            result_newton_raphson[1],
+            atol=1e-4
+        )
 
 class TestCoxPHFitterPeices:
     @pytest.fixture

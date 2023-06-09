@@ -1443,7 +1443,7 @@ estimate the variances. See paper "Variance estimation when using inverse probab
         from skglm.solvers import ProxNewton
         from skglm.utils.jit_compilation import compiled_clone
 
-        n_samples = X.shape[0]
+        n_samples, n_features = X.shape
         X_array, T_array, E_array = X.values, T.values, E.values
 
         datafit = compiled_clone(Cox(use_efron=True))
@@ -1452,13 +1452,12 @@ estimate the variances. See paper "Variance estimation when using inverse probab
 
         # solve problem
         datafit.initialize(X_array, (T_array, E_array))
-        beta_, obj_out, _ = prox_newton_solver.solve(X_array, (T_array, E_array), datafit, penalty)
+        beta_, X_beta_ = np.zeros(n_features), np.zeros(n_samples)
+        beta_, obj_out, _ = prox_newton_solver.solve(X_array, (T_array, E_array), datafit, penalty, beta_, X_beta_)
 
-        # rescaling objective as skglm minimizes the normalized negative-loglikelihood
+        # rescaling by `n_samples` as skglm minimizes the normalized negative-loglikelihood
         ll_ = -n_samples * obj_out[-1]
-
-        Xw = X_array @ beta_
-        hessian_ = X_array.T @ (datafit.raw_hessian((T_array, E_array), Xw)[:, None] * X_array)
+        hessian_ = X_array.T @ (n_samples * datafit.raw_hessian((T_array, E_array), X_beta_)[:, None] * X_array)
 
         return beta_, ll_, hessian_
 
