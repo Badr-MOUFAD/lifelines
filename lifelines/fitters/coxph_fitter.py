@@ -1426,7 +1426,10 @@ estimate the variances. See paper "Variance estimation when using inverse probab
         initial_point: Optional[ndarray] = None,
         show_progress: bool = True,
     ):
-        use_skglm = self.penalizer != 0 and self.l1_ratio != 0 and weights is None and entries is None
+        # TODO: add support for weighted L1 + L2
+        # TODO: add support for sample weight
+        use_skglm = isinstance(self.penalizer, float) or isinstance(self.penalizer, int) and self.penalizer != 0
+        use_skglm &= self.l1_ratio != 0 and weights is None and entries is None
 
         # use skglm prox_newton when conditions are met otherwise fallback to newton_raphson
         if use_skglm:
