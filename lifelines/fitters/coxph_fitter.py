@@ -1382,7 +1382,7 @@ estimate the variances. See paper "Variance estimation when using inverse probab
             entries,
             initial_point=initial_point,
             show_progress=show_progress,
-            **fit_options,
+            fit_options=fit_options,
         )
 
         # compute the baseline hazard here.
@@ -1428,6 +1428,7 @@ estimate the variances. See paper "Variance estimation when using inverse probab
     ):
         use_skglm = self.penalizer != 0 and self.l1_ratio != 0 and weights is None and entries is None
 
+        # use skglm prox_newton when conditions are met otherwise fallback to newton_raphson
         if use_skglm:
             from skglm.datafits import Cox
             from skglm.penalties import L1_plus_L2
@@ -1445,11 +1446,11 @@ estimate the variances. See paper "Variance estimation when using inverse probab
             datafit.initialize(X_array, (T_array, E_array))
             beta_, obj_out, _ = prox_newton_solver.solve(X_array, (T_array, E_array), datafit, penalty)
 
+            # rescaling objective as skglm minimizes the normalized negative-loglikelihood
             ll_ = -n_samples * obj_out[-1]
 
             Xw = X_array @ beta_
             hessian_ = X_array.T @ datafit.raw_hessian((T_array, E_array), Xw) @ X_array
-
         else:
             beta_, ll_, hessian_ = self._newton_raphson_for_efron_model(
                 X,
