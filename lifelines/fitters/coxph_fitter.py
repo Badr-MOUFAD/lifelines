@@ -1378,7 +1378,7 @@ estimate the variances. See paper "Variance estimation when using inverse probab
         # TODO: add support for weighted L1 + L2
         # TODO: add support for sample weight
         use_skglm = isinstance(self.penalizer, float) or isinstance(self.penalizer, int) and self.penalizer != 0
-        use_skglm &= self.l1_ratio != 0 and weights is None and entries is None
+        use_skglm &= self.l1_ratio != 0 and (weights != 1.).any() and entries is None
 
         if use_skglm:
             beta_, ll_, hessian_ = self._prox_newton_for_efron_model(
