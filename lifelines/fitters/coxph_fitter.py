@@ -1374,16 +1374,31 @@ estimate the variances. See paper "Variance estimation when using inverse probab
         initial_point: Optional[ndarray] = None,
         show_progress: bool = True,
     ):
-        beta_, ll_, hessian_ = self._solver_for_efron_model(
-            X,
-            T,
-            E,
-            weights,
-            entries,
-            initial_point=initial_point,
-            show_progress=show_progress,
-            fit_options=fit_options,
-        )
+        # use skglm prox_newton if conditions are met otherwise fallback to newton_raphson
+        # TODO: add support for weighted L1 + L2
+        # TODO: add support for sample weight
+        use_skglm = isinstance(self.penalizer, float) or isinstance(self.penalizer, int) and self.penalizer != 0
+        use_skglm &= self.l1_ratio != 0 and weights is None and entries is None
+
+        if use_skglm:
+            beta_, ll_, hessian_ = self._prox_newton_for_efron_model(
+                X,
+                T,
+                E,
+                show_progress=show_progress,
+                fit_options=fit_options,
+            )
+        else:
+            beta_, ll_, hessian_ = self._newton_raphson_for_efron_model(
+                X,
+                T,
+                E,
+                weights,
+                entries,
+                initial_point=initial_point,
+                show_progress=show_progress,
+                **fit_options,
+            )
 
         # compute the baseline hazard here.
         predicted_partial_hazards_ = (
@@ -1415,56 +1430,35 @@ estimate the variances. See paper "Variance estimation when using inverse probab
         decision = _BatchVsSingle().decide(self._batch_mode, T.nunique(), *X.shape)
         return getattr(self, "_get_efron_values_%s" % decision)
 
-    def _solver_for_efron_model(
+    def _prox_newton_for_efron_model(
         self,
         X: DataFrame,
         T: Series,
         E: Series,
-        weights: Series,
-        entries: Optional[Series],
         fit_options: dict,
-        initial_point: Optional[ndarray] = None,
         show_progress: bool = True,
     ):
-        # TODO: add support for weighted L1 + L2
-        # TODO: add support for sample weight
-        use_skglm = isinstance(self.penalizer, float) or isinstance(self.penalizer, int) and self.penalizer != 0
-        use_skglm &= self.l1_ratio != 0 and weights is None and entries is None
+        from skglm.datafits import Cox
+        from skglm.penalties import L1_plus_L2
+        from skglm.solvers import ProxNewton
+        from skglm.utils.jit_compilation import compiled_clone
 
-        # use skglm prox_newton when conditions are met otherwise fallback to newton_raphson
-        if use_skglm:
-            from skglm.datafits import Cox
-            from skglm.penalties import L1_plus_L2
-            from skglm.solvers import ProxNewton
-            from skglm.utils.jit_compilation import compiled_clone
+        datafit = compiled_clone(Cox(use_efron=True))
+        penalty = compiled_clone(L1_plus_L2(self.penalizer, self.l1_ratio))
+        prox_newton_solver = ProxNewton(fit_intercept=False, verbose=show_progress, **fit_options)
 
-            datafit = compiled_clone(Cox(use_efron=True))
-            penalty = compiled_clone(L1_plus_L2(self.penalizer, self.l1_ratio))
-            prox_newton_solver = ProxNewton(fit_intercept=False, verbose=show_progress, **fit_options)
+        n_samples = X.shape[0]
+        X_array, T_array, E_array = X.values, T.values, E.values
 
-            n_samples = X.shape[0]
-            X_array, T_array, E_array = X.values, T.values, E.values
+        # solve problem
+        datafit.initialize(X_array, (T_array, E_array))
+        beta_, obj_out, _ = prox_newton_solver.solve(X_array, (T_array, E_array), datafit, penalty)
 
-            # solve problem
-            datafit.initialize(X_array, (T_array, E_array))
-            beta_, obj_out, _ = prox_newton_solver.solve(X_array, (T_array, E_array), datafit, penalty)
+        # rescaling objective as skglm minimizes the normalized negative-loglikelihood
+        ll_ = -n_samples * obj_out[-1]
 
-            # rescaling objective as skglm minimizes the normalized negative-loglikelihood
-            ll_ = -n_samples * obj_out[-1]
-
-            Xw = X_array @ beta_
-            hessian_ = X_array.T @ datafit.raw_hessian((T_array, E_array), Xw) @ X_array
-        else:
-            beta_, ll_, hessian_ = self._newton_raphson_for_efron_model(
-                X,
-                T,
-                E,
-                weights,
-                entries,
-                initial_point=initial_point,
-                show_progress=show_progress,
-                **fit_options,
-            )
+        Xw = X_array @ beta_
+        hessian_ = X_array.T @ datafit.raw_hessian((T_array, E_array), Xw) @ X_array
 
         return beta_, ll_, hessian_
 
