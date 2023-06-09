@@ -143,7 +143,6 @@ class CoxPHFitter(RegressionFitter, ProportionalHazardMixin):
         breakpoints: Optional[List] = None,
         **kwargs,
     ) -> None:
-
         super(CoxPHFitter, self).__init__(**kwargs)
 
         if l1_ratio < 0 or l1_ratio > 1:
@@ -680,7 +679,6 @@ class CoxPHFitter(RegressionFitter, ProportionalHazardMixin):
         return model
 
     def _fit_model_spline(self, *args, **kwargs):
-
         df = args[0].copy()
 
         # handle if they provided a formula or not
@@ -1078,7 +1076,6 @@ class SemiParametricPHFitter(ProportionalHazardMixin, SemiParametricRegressionFi
         l1_ratio: float = 0.0,
         **kwargs,
     ) -> None:
-
         super(SemiParametricPHFitter, self).__init__(**kwargs)
 
         if l1_ratio < 0 or l1_ratio > 1:
@@ -1377,7 +1374,7 @@ estimate the variances. See paper "Variance estimation when using inverse probab
         initial_point: Optional[ndarray] = None,
         show_progress: bool = True,
     ):
-        beta_, ll_, hessian_ = self._newton_raphson_for_efron_model(
+        beta_, ll_, hessian_ = self._solver_for_efron_model(
             X,
             T,
             E,
@@ -1408,7 +1405,6 @@ estimate the variances. See paper "Variance estimation when using inverse probab
         return params_, ll_, variance_matrix_, baseline_hazard_, baseline_cumulative_hazard_, None
 
     def _choose_gradient_calculator(self, T, X, entries):
-
         if entries is not None:
             from lifelines import CoxTimeVaryingFitter
 
@@ -1418,6 +1414,55 @@ estimate the variances. See paper "Variance estimation when using inverse probab
 
         decision = _BatchVsSingle().decide(self._batch_mode, T.nunique(), *X.shape)
         return getattr(self, "_get_efron_values_%s" % decision)
+
+    def _solver_for_efron_model(
+        self,
+        X: DataFrame,
+        T: Series,
+        E: Series,
+        weights: Series,
+        entries: Optional[Series],
+        fit_options: dict,
+        initial_point: Optional[ndarray] = None,
+        show_progress: bool = True,
+    ):
+        use_skglm = self.penalizer != 0 and self.l1_ratio != 0 and weights is None and entries is None
+
+        if use_skglm:
+            from skglm.datafits import Cox
+            from skglm.penalties import L1_plus_L2
+            from skglm.solvers import ProxNewton
+            from skglm.utils.jit_compilation import compiled_clone
+
+            datafit = compiled_clone(Cox(use_efron=True))
+            penalty = compiled_clone(L1_plus_L2(self.penalizer, self.l1_ratio))
+            prox_newton_solver = ProxNewton(fit_intercept=False, verbose=show_progress, **fit_options)
+
+            n_samples = X.shape[0]
+            X_array, T_array, E_array = X.values, T.values, E.values
+
+            # solve problem
+            datafit.initialize(X_array, (T_array, E_array))
+            beta_, obj_out, _ = prox_newton_solver.solve(X_array, (T_array, E_array), datafit, penalty)
+
+            ll_ = -n_samples * obj_out[-1]
+
+            Xw = X_array @ beta_
+            hessian_ = X_array.T @ datafit.raw_hessian((T_array, E_array), Xw) @ X_array
+
+        else:
+            beta_, ll_, hessian_ = self._newton_raphson_for_efron_model(
+                X,
+                T,
+                E,
+                weights,
+                entries,
+                initial_point=initial_point,
+                show_progress=show_progress,
+                **fit_options,
+            )
+
+        return beta_, ll_, hessian_
 
     def _newton_raphson_for_efron_model(
         self,
@@ -1499,7 +1544,6 @@ estimate the variances. See paper "Variance estimation when using inverse probab
             i += 1
 
             if self.strata is None:
-
                 h, g, ll_ = get_gradients(X, T, E, weights, entries, beta)
 
             else:
@@ -1788,7 +1832,6 @@ See https://stats.stackexchange.com/q/11109/11867 for more.\n",
         ZERO_TO_N = arange(counts.max())
 
         for count_of_removals in counts:
-
             slice_ = slice(pos - count_of_removals, pos)
 
             X_at_t = X[slice_]
@@ -1820,7 +1863,6 @@ See https://stats.stackexchange.com/q/11109/11867 for more.\n",
             weighted_average = weight_count / tied_death_counts
 
             if tied_death_counts > 1:
-
                 # a lot of this is now in Einstein notation for performance, but see original "expanded" code here
                 # https://github.com/CamDavidsonPilon/lifelines/blob/e7056e7817272eb5dff5983556954f56c33301b1/lifelines/fitters/coxph_fitter.py#L755-L789
 
@@ -2013,7 +2055,6 @@ See https://stats.stackexchange.com/q/11109/11867 for more.\n",
             # Calculate sums of Ties, if this is an event
             diff_against.append((xi, ei))
             if ei:
-
                 tie_phi = tie_phi + phi_i
                 tie_phi_x = tie_phi_x + phi_x_i
 
@@ -2034,7 +2075,6 @@ See https://stats.stackexchange.com/q/11109/11867 for more.\n",
             weighted_mean = zeros((1, d))
 
             for l in range(tie_count):
-
                 numer = risk_phi_x - l * tie_phi_x / tie_count
                 denom = risk_phi - l * tie_phi / tie_count
 
@@ -2070,7 +2110,6 @@ See https://stats.stackexchange.com/q/11109/11867 for more.\n",
         return delta_betas
 
     def _compute_score(self, X: DataFrame, T: Series, E: Series, weights: Series, index: Optional[Index] = None) -> pd.DataFrame:
-
         _, d = X.shape
 
         if self.strata is not None:
@@ -2116,7 +2155,6 @@ See https://stats.stackexchange.com/q/11109/11867 for more.\n",
 
         # Iterate forwards
         for i in range(0, n):
-
             xi = X[i : i + 1]
             phi_i = phi_s[i]
 
@@ -2280,7 +2318,6 @@ See https://stats.stackexchange.com/q/11109/11867 for more.\n",
         index = utils._get_index(X)
 
         if isinstance(X, pd.DataFrame):
-
             X = self.regressors.transform_df(X)["beta_"]
             X = X.values
 
@@ -2364,7 +2401,6 @@ See https://stats.stackexchange.com/q/11109/11867 for more.\n",
                     pd.DataFrame(c_0_ * v.values, columns=col, index=times_), how="outer", right_index=True, left_index=True
                 )
         else:
-
             v = self.predict_partial_hazard(X)
             col = utils._get_index(v)
             times_ = times
@@ -2528,7 +2564,6 @@ See https://stats.stackexchange.com/q/11109/11867 for more.\n",
 
     def _compute_baseline_hazards(self, predicted_partial_hazards_) -> pd.DataFrame:
         if self.strata:
-
             index = self.durations.unique()
             baseline_hazards_ = pd.DataFrame(index=index).sort_index()
 
@@ -2697,7 +2732,6 @@ See https://stats.stackexchange.com/q/11109/11867 for more.\n",
         entries = df.pop(self.entry_col) if self.entry_col else None
 
         if scoring_method == "log_likelihood":
-
             df = self.regressors.transform_df(df)["beta_"]
             df = utils.normalize(df, self._norm_mean.values, 1.0)
 
@@ -2765,7 +2799,6 @@ See https://stats.stackexchange.com/q/11109/11867 for more.\n",
 
 
 class ParametricCoxModelFitter(ParametricRegressionFitter, ProportionalHazardMixin):
-
     _KNOWN_MODEL = True
     cluster_col = None
 
@@ -2865,7 +2898,6 @@ class ParametricCoxModelFitter(ParametricRegressionFitter, ProportionalHazardMix
                 df["conditional_after_"] = conditional_after
 
             for stratum, stratified_X in df.groupby(self.strata):
-
                 if conditional_after is not None:
                     conditional_after_ = stratified_X.pop("conditional_after_")
                 else:
@@ -2922,7 +2954,6 @@ class ParametricCoxModelFitter(ParametricRegressionFitter, ProportionalHazardMix
                 df["conditional_after_"] = conditional_after
 
             for stratum, stratified_X in df.groupby(self.strata):
-
                 if conditional_after is not None:
                     conditional_after_ = stratified_X.pop("conditional_after_")
                 else:
@@ -3242,7 +3273,6 @@ class ParametricPiecewiseBaselinePHFitter(ParametricCoxModelFitter, Proportional
 
 
 class _BatchVsSingle:
-
     BATCH = "batch"
     SINGLE = "single"
 
