@@ -2901,11 +2901,13 @@ class TestSkglmL1Cox:
         tm, s, X = make_dummy_survival_data(n_samples, n_features, normalize=True, with_ties=True, random_state=0)
 
         stacked_tm_s_X = np.hstack((tm[:, None], s[:, None], X))
-        return pd.DataFrame(stacked_tm_s_X)
+
+        # it is mandatory to pass in sorted observation to newton_raphson
+        return pd.DataFrame(stacked_tm_s_X).sort_values(by=[0])
 
     @pytest.fixture
     def cph(self):
-        estimator = SemiParametricPHFitter(penalizer=1e-3, l1_ratio=1.)
+        estimator = SemiParametricPHFitter(penalizer=1e-3, l1_ratio=0.7)
         estimator._batch_mode = False
         return estimator
 
@@ -2918,9 +2920,10 @@ class TestSkglmL1Cox:
 
         np.testing.assert_allclose(
             skglm_prox_newton(X, T, E, fit_options={})[0],
-            newton_raphson(X, T, E, W, entries)[0],
+            newton_raphson(X, T, E, W, entries, precision=1e-12)[0],
             atol=1e-4
         )
+
 
 class TestCoxPHFitterPeices:
     @pytest.fixture

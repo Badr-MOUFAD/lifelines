@@ -1443,12 +1443,12 @@ estimate the variances. See paper "Variance estimation when using inverse probab
         from skglm.solvers import ProxNewton
         from skglm.utils.jit_compilation import compiled_clone
 
+        n_samples = X.shape[0]
+        X_array, T_array, E_array = X.values, T.values, E.values
+
         datafit = compiled_clone(Cox(use_efron=True))
         penalty = compiled_clone(L1_plus_L2(self.penalizer, self.l1_ratio))
         prox_newton_solver = ProxNewton(fit_intercept=False, verbose=show_progress, **fit_options)
-
-        n_samples = X.shape[0]
-        X_array, T_array, E_array = X.values, T.values, E.values
 
         # solve problem
         datafit.initialize(X_array, (T_array, E_array))
