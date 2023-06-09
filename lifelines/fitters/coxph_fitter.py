@@ -1458,7 +1458,7 @@ estimate the variances. See paper "Variance estimation when using inverse probab
         ll_ = -n_samples * obj_out[-1]
 
         Xw = X_array @ beta_
-        hessian_ = X_array.T @ datafit.raw_hessian((T_array, E_array), Xw) @ X_array
+        hessian_ = X_array.T @ (datafit.raw_hessian((T_array, E_array), Xw)[:, None] * X_array)
 
         return beta_, ll_, hessian_
 

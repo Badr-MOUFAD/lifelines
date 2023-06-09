@@ -2892,6 +2892,36 @@ class TestCoxPHFitter_SemiParametric:
         assert np.abs(newton(X, T, E, W, entries)[0] - -0.0335) < 0.0001
 
 
+class TestSkglmL1Cox:
+    @pytest.fixture
+    def tied_data(self):
+        from skglm.utils.data import make_dummy_survival_data
+
+        n_samples, n_features = 100, 10
+        tm, s, X = make_dummy_survival_data(n_samples, n_features, normalize=True, with_ties=True, random_state=0)
+
+        stacked_tm_s_X = np.hstack((tm[:, None], s[:, None], X))
+        return pd.DataFrame(stacked_tm_s_X)
+
+    @pytest.fixture
+    def cph(self):
+        estimator = SemiParametricPHFitter(penalizer=1e-3, l1_ratio=1.)
+        estimator._batch_mode = False
+        return estimator
+
+    def test_prox_newton_newton_raphson(self, tied_data, cph):
+        X, T, E = tied_data.drop([0, 1], axis=1), tied_data[0], tied_data[1]
+        entries, W = None, pd.Series(np.ones_like(T))
+
+        newton_raphson = cph._newton_raphson_for_efron_model
+        skglm_prox_newton = cph._prox_newton_for_efron_model
+
+        np.testing.assert_allclose(
+            skglm_prox_newton(X, T, E, fit_options={})[0],
+            newton_raphson(X, T, E, W, entries)[0],
+            atol=1e-4
+        )
+
 class TestCoxPHFitterPeices:
     @pytest.fixture
     def cph(self):
