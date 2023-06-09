@@ -2892,6 +2892,46 @@ class TestCoxPHFitter_SemiParametric:
         assert np.abs(newton(X, T, E, W, entries)[0] - -0.0335) < 0.0001
 
 
+class TestSkglmL1Cox:
+    @pytest.fixture
+    def tied_data(self):
+        from skglm.utils.data import make_dummy_survival_data
+
+        n_samples, n_features = 100, 10
+        tm, s, X = make_dummy_survival_data(n_samples, n_features, normalize=True, with_ties=True, random_state=0)
+
+        stacked_tm_s_X = np.hstack((tm[:, None], s[:, None], X))
+
+        # it is mandatory to pass in sorted observation to newton_raphson
+        return pd.DataFrame(stacked_tm_s_X).sort_values(by=[0])
+
+    @pytest.fixture
+    def cph(self):
+        estimator = SemiParametricPHFitter(penalizer=1e-3, l1_ratio=0.7)
+        estimator._batch_mode = False
+        return estimator
+
+    def test_prox_newton_newton_raphson(self, tied_data, cph):
+        X, T, E = tied_data.drop([0, 1], axis=1), tied_data[0], tied_data[1]
+        entries, W = None, pd.Series(np.ones_like(T))
+
+        result_prox_newton = cph._prox_newton_for_efron_model(X, T, E, fit_options={}, show_progress=False)
+        result_newton_raphson = cph._newton_raphson_for_efron_model(X, T, E, W, entries, show_progress=False, precision=1e-12)
+
+        # check solution
+        np.testing.assert_allclose(
+            result_prox_newton[0],
+            result_newton_raphson[0],
+            atol=1e-4
+        )
+
+        # check log likelihood
+        np.testing.assert_allclose(
+            result_prox_newton[1],
+            result_newton_raphson[1],
+            atol=1e-4
+        )
+
 class TestCoxPHFitterPeices:
     @pytest.fixture
     def cph(self):
